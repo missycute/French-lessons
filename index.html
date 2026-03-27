@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>French Shared Notebook</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <span class="eyebrow">Shared French notebook</span>
+      <h1>Save French words and sentences with live sync</h1>
+      <p>
+        Everything added here is stored online and shared with anyone using the same room link.
+      </p>
+    </section>
+
+    <div class="room-bar">
+      <div>
+        <p class="room-label">Current room</p>
+        <strong id="roomName">default-room</strong>
+      </div>
+      <button id="copyRoomBtn" class="secondary-btn small-btn">Copy room link</button>
+    </div>
+
+    <div class="layout">
+      <aside>
+        <div class="panel">
+          <div class="tabs">
+            <button class="tab-btn active" id="wordsTab">Words</button>
+            <button class="tab-btn" id="sentencesTab">Sentences</button>
+          </div>
+
+          <div class="field">
+            <input type="text" id="authorInput" placeholder="Your name (optional)" />
+          </div>
+
+          <form id="wordForm">
+            <h2>Add a word</h2>
+            <div class="field">
+              <input type="text" id="wordFrench" placeholder="French word" required />
+            </div>
+            <div class="field">
+              <input type="text" id="wordMeaning" placeholder="Meaning / translation" required />
+            </div>
+            <div class="field">
+              <input type="text" id="wordCategory" placeholder="Category (travel, verbs, basics...)" />
+            </div>
+            <div class="field">
+              <textarea id="wordExample" placeholder="Example sentence"></textarea>
+            </div>
+            <button class="primary-btn" type="submit">Save word</button>
+          </form>
+
+          <form id="sentenceForm" style="display:none;">
+            <h2>Add a sentence</h2>
+            <div class="field">
+              <textarea id="sentenceFrench" placeholder="French sentence" required></textarea>
+            </div>
+            <div class="field">
+              <textarea id="sentenceMeaning" placeholder="Meaning / translation" required></textarea>
+            </div>
+            <div class="field">
+              <input type="text" id="sentenceCategory" placeholder="Category (daily life, work, travel...)" />
+            </div>
+            <button class="primary-btn" type="submit">Save sentence</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <h2>Study mode</h2>
+          <p class="muted">Review what is saved in the current room.</p>
+
+          <div class="study-box">
+            <div class="study-card">
+              <p class="muted">French</p>
+              <h3 id="studyFrench">Loading...</h3>
+
+              <div class="study-answer" id="studyAnswer" style="display:none;">
+                <p class="muted">Meaning</p>
+                <p id="studyMeaning"></p>
+                <div id="studyExtra"></div>
+              </div>
+            </div>
+
+            <div class="study-actions">
+              <button class="primary-btn" type="button" id="showAnswerBtn">Show answer</button>
+              <button class="secondary-btn" type="button" id="nextBtn">Next</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content-card">
+        <div class="top-row">
+          <div>
+            <h2>Your shared French library</h2>
+            <p class="muted">Everyone in this room sees the same content.</p>
+          </div>
+
+          <input
+            class="search"
+            type="text"
+            id="searchInput"
+            placeholder="Search French, meaning, category, author..."
+          />
+        </div>
+
+        <div class="stats">
+          <div class="stat-card">
+            <span>Words</span>
+            <strong id="wordCount">0</strong>
+          </div>
+          <div class="stat-card">
+            <span>Sentences</span>
+            <strong id="sentenceCount">0</strong>
+          </div>
+          <div class="stat-card">
+            <span>Visible items</span>
+            <strong id="visibleCount">0</strong>
+          </div>
+        </div>
+
+        <div class="status-line" id="statusLine">Connecting...</div>
+        <div class="entries" id="entries"></div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>
