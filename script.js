@@ -3,6 +3,7 @@ import {
   getFirestore,
   collection,
   addDoc,
+  updateDoc,
   deleteDoc,
   doc,
   onSnapshot,
@@ -10,10 +11,16 @@ import {
   orderBy,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
 
 /* =========================
    1) FIREBASE CONFIG
-   Replace with your own
 ========================= */
 const firebaseConfig = {
   apiKey: "AIzaSyApLzuy67AF3CzxvEgZWeFTu6hYtnaSfN8",
@@ -27,6 +34,9 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+provider.setCustomParameters({ prompt: "select_account" });
 
 /* =========================
    2) DOM REFERENCES
@@ -34,75 +44,170 @@ const db = getFirestore(app);
 const wordsTab = document.getElementById("wordsTab");
 const sentencesTab = document.getElementById("sentencesTab");
 
-const wordForm = document.getElementById("wordForm");
-const sentenceForm = document.getElementById("sentenceForm");
+const entryForm = document.getElementById("entryForm");
+const formTitle = document.getElementById("formTitle");
+const cancelEditBtn = document.getElementById("cancelEditBtn");
+const saveBtn = document.getElementById("saveBtn");
 
+const editingId = document.getElementById("editingId");
 const authorInput = document.getElementById("authorInput");
+const frenchInput = document.getElementById("frenchInput");
+const meaningInput = document.getElementById("meaningInput");
+const categoryInput = document.getElementById("categoryInput");
+const exampleInput = document.getElementById("exampleInput");
+const exampleField = document.getElementById("exampleField");
 
-const wordFrench = document.getElementById("wordFrench");
-const wordMeaning = document.getElementById("wordMeaning");
-const wordCategory = document.getElementById("wordCategory");
-const wordExample = document.getElementById("wordExample");
-
-const sentenceFrench = document.getElementById("sentenceFrench");
-const sentenceMeaning = document.getElementById("sentenceMeaning");
-const sentenceCategory = document.getElementById("sentenceCategory");
+const authNotice = document.getElementById("authNotice");
+const signInBtn = document.getElementById("signInBtn");
+const signOutBtn = document.getElementById("signOutBtn");
+const userInfo = document.getElementById("userInfo");
+const userAvatar = document.getElementById("userAvatar");
+const userName = document.getElementById("userName");
+const userEmail = document.getElementById("userEmail");
 
 const entries = document.getElementById("entries");
 const searchInput = document.getElementById("searchInput");
+const statusLine = document.getElementById("statusLine");
 
 const wordCount = document.getElementById("wordCount");
 const sentenceCount = document.getElementById("sentenceCount");
 const visibleCount = document.getElementById("visibleCount");
 
-const showAnswerBtn = document.getElementById("showAnswerBtn");
-const nextBtn = document.getElementById("nextBtn");
-const studyFrench = document.getElementById("studyFrench");
-const studyMeaning = document.getElementById("studyMeaning");
-const studyAnswer = document.getElementById("studyAnswer");
-const studyExtra = document.getElementById("studyExtra");
-const statusLine = document.getElementById("statusLine");
-
 const roomName = document.getElementById("roomName");
 const copyRoomBtn = document.getElementById("copyRoomBtn");
+
+const showAnswerBtn = document.getElementById("showAnswerBtn");
+const prevBtn = document.getElementById("prevBtn");
+const nextBtn = document.getElementById("nextBtn");
+const markKnownBtn = document.getElementById("markKnownBtn");
+const markHardBtn = document.getElementById("markHardBtn");
+const studySpeakBtn = document.getElementById("studySpeakBtn");
+const shuffleToggle = document.getElementById("shuffleToggle");
+const hardOnlyToggle = document.getElementById("hardOnlyToggle");
+
+const studyFrench = document.getElementById("studyFrench");
+const studyMeaning = document.getElementById("studyMeaning");
+const studyExtra = document.getElementById("studyExtra");
+const studyAnswer = document.getElementById("studyAnswer");
+const knownCount = document.getElementById("knownCount");
+const hardCount = document.getElementById("hardCount");
+const queueCount = document.getElementById("queueCount");
 
 /* =========================
    3) APP STATE
 ========================= */
+let currentUser = null;
 let currentTab = "words";
-let studyIndex = 0;
 let allEntries = [];
 let unsubscribe = null;
 
+let studyQueue = [];
+let studyIndex = 0;
+
 /* =========================
    4) ROOM FROM URL
-   Example:
-   ?room=mysharedclass
 ========================= */
 const params = new URLSearchParams(window.location.search);
 const currentRoom = (params.get("room") || "default-room").trim();
-
 roomName.textContent = currentRoom;
 
 /* =========================
-   5) SAVE NAME LOCALLY
+   5) LOCAL HELPERS
 ========================= */
-authorInput.value = localStorage.getItem("french_author_name") || "";
+function getProgressKey() {
+  const uid = currentUser?.uid || "guest";
+  return `french_progress_${currentRoom}_${uid}`;
+}
 
-authorInput.addEventListener("input", () => {
-  localStorage.setItem("french_author_name", authorInput.value.trim());
-});
+function getStudyProgress() {
+  try {
+    return JSON.parse(localStorage.getItem(getProgressKey())) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStudyProgress(progress) {
+  localStorage.setItem(getProgressKey(), JSON.stringify(progress));
+}
+
+function setEntryStatus(entryId, status) {
+  const progress = getStudyProgress();
+  progress[entryId] = status;
+  saveStudyProgress(progress);
+  rebuildStudyQueue();
+  renderStudyCard();
+}
+
+function getEntryStatus(entryId) {
+  const progress = getStudyProgress();
+  return progress[entryId] || "";
+}
+
+function defaultAuthorName() {
+  return currentUser?.displayName || "";
+}
 
 /* =========================
    6) FIRESTORE COLLECTION
-   rooms/{room}/entries
 ========================= */
 function getEntriesCollection() {
   return collection(db, "rooms", currentRoom, "entries");
 }
 
 /* =========================
-   7) REALTIME LISTENER
+   7) AUTH
+========================= */
+async function handleSignIn() {
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (error) {
+    console.error(error);
+    alert("Could not sign in.");
+  }
+}
+
+async function handleSignOut() {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error(error);
+    alert("Could not sign out.");
+  }
+}
+
+function updateAuthUI() {
+  const signedIn = !!currentUser;
+
+  signInBtn.classList.toggle("hidden", signedIn);
+  signOutBtn.classList.toggle("hidden", !signedIn);
+  userInfo.classList.toggle("hidden", !signedIn);
+
+  if (signedIn) {
+    userAvatar.src = currentUser.photoURL || "";
+    userName.textContent = currentUser.displayName || "Signed in";
+    userEmail.textContent = currentUser.email || "";
+    authorInput.value = authorInput.value || defaultAuthorName();
+    authNotice.textContent = "You can add, edit, and delete only your own entries.";
+  } else {
+    userAvatar.src = "";
+    userName.textContent = "";
+    userEmail.textContent = "";
+    authorInput.value = "";
+    authNotice.textContent = "Sign in to add, edit, or delete your own items.";
+  }
+}
+
+onAuthStateChanged(auth, (user) => {
+  currentUser = user || null;
+  updateAuthUI();
+  rebuildStudyQueue();
+  renderEntries();
+  renderStudyCard();
+});
+
+/* =========================
+   8) REALTIME LISTENER
 ========================= */
 function startRealtimeListener() {
   if (unsubscribe) unsubscribe();
@@ -120,21 +225,22 @@ function startRealtimeListener() {
       }));
 
       statusLine.textContent = `Live sync active • ${allEntries.length} total item(s) in this room`;
+      rebuildStudyQueue();
       renderEntries();
       renderStudyCard();
     },
     (error) => {
       console.error(error);
-      statusLine.textContent = "Could not load data. Check Firebase config and Firestore rules.";
+      statusLine.textContent = "Could not load data. Check Firebase config, Auth setup, and Firestore rules.";
     }
   );
 }
 
 /* =========================
-   8) HELPERS
+   9) HELPERS
 ========================= */
 function escapeHtml(text = "") {
-  return text
+  return String(text)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -144,30 +250,28 @@ function escapeHtml(text = "") {
 
 function setTab(tab) {
   currentTab = tab;
-  studyIndex = 0;
-  studyAnswer.style.display = "none";
+  clearEditingState();
 
-  if (tab === "words") {
-    wordsTab.classList.add("active");
-    sentencesTab.classList.remove("active");
-    wordForm.style.display = "block";
-    sentenceForm.style.display = "none";
-  } else {
-    sentencesTab.classList.add("active");
-    wordsTab.classList.remove("active");
-    wordForm.style.display = "none";
-    sentenceForm.style.display = "block";
-  }
+  wordsTab.classList.toggle("active", tab === "words");
+  sentencesTab.classList.toggle("active", tab === "sentences");
 
-  renderEntries();
-  renderStudyCard();
+  formTitle.textContent = tab === "words" ? "Add a word" : "Add a sentence";
+  exampleField.classList.toggle("hidden", tab !== "words");
+  frenchInput.placeholder = tab === "words" ? "French word" : "French sentence";
+
+  searchInput.dispatchEvent(new Event("input"));
+}
+
+function isOwner(item) {
+  return !!currentUser && item.userId === currentUser.uid;
 }
 
 function getFilteredItems() {
   const queryText = searchInput.value.toLowerCase().trim();
+  const targetType = currentTab === "words" ? "word" : "sentence";
 
   return allEntries.filter((item) => {
-    if (item.type !== currentTab.slice(0, -1)) return false;
+    if (item.type !== targetType) return false;
 
     const blob = [
       item.french || "",
@@ -192,7 +296,40 @@ function getSentenceCount() {
 }
 
 /* =========================
-   9) RENDER ENTRIES
+   10) SPEAK
+========================= */
+function speakFrench(text) {
+  if (!text || !text.trim()) return;
+
+  if (!("speechSynthesis" in window)) {
+    alert("Your browser does not support voice playback.");
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "fr-FR";
+  utterance.rate = 0.9;
+  utterance.pitch = 1;
+
+  const voices = window.speechSynthesis.getVoices();
+  const frenchVoice =
+    voices.find((voice) => voice.lang && voice.lang.toLowerCase().startsWith("fr")) || null;
+
+  if (frenchVoice) utterance.voice = frenchVoice;
+
+  window.speechSynthesis.speak(utterance);
+}
+
+if ("speechSynthesis" in window) {
+  window.speechSynthesis.onvoiceschanged = () => {
+    window.speechSynthesis.getVoices();
+  };
+}
+
+/* =========================
+   11) RENDER ENTRIES
 ========================= */
 function renderEntries() {
   const filtered = getFilteredItems();
@@ -208,80 +345,111 @@ function renderEntries() {
   }
 
   filtered.forEach((item) => {
-    const card = document.createElement("div");
-    card.className = "entry-card";
-
-    const categoryHtml = item.category
-      ? `<span class="category-tag">${escapeHtml(item.category)}</span>`
+    const status = getEntryStatus(item.id);
+    const statusTag = status
+      ? `<span class="tag tag-category">${status === "known" ? "Known" : "Hard"}</span>`
       : "";
 
-    const authorHtml = item.author
-      ? `<span class="author-tag">By ${escapeHtml(item.author)}</span>`
-      : `<span class="author-tag">By anonymous</span>`;
+    const extraHtml =
+      item.type === "word" && item.example
+        ? `<div class="entry-extra"><p class="muted small">Example</p><p>${escapeHtml(item.example)}</p></div>`
+        : "";
 
-    const typeHtml =
-      item.type === "word"
-        ? `<span class="type-tag">Word</span>`
-        : `<span class="type-tag">Sentence</span>`;
+    const ownerActions = isOwner(item)
+      ? `
+        <button class="edit-btn" data-edit-id="${item.id}">Edit</button>
+        <button class="delete-btn" data-delete-id="${item.id}">Delete</button>
+      `
+      : "";
 
-    if (item.type === "word") {
-      card.innerHTML = `
-        <div class="entry-top">
-          <div>
-            <h3>${escapeHtml(item.french)}</h3>
-            <p>${escapeHtml(item.meaning)}</p>
-            <div class="meta">
-              ${typeHtml}
-              ${categoryHtml}
-              ${authorHtml}
-            </div>
+    const card = document.createElement("div");
+    card.className = "entry-card";
+    card.innerHTML = `
+      <div class="entry-top">
+        <div class="entry-main">
+          <h4>${escapeHtml(item.french)}</h4>
+          <p>${escapeHtml(item.meaning)}</p>
+          <div class="meta">
+            <span class="tag tag-type">${item.type === "word" ? "Word" : "Sentence"}</span>
+            ${item.category ? `<span class="tag tag-category">${escapeHtml(item.category)}</span>` : ""}
+            <span class="tag tag-author">By ${escapeHtml(item.author || "anonymous")}</span>
+            ${statusTag}
           </div>
-          <button class="delete-btn" data-id="${item.id}">Delete</button>
+          ${extraHtml}
         </div>
-        ${
-          item.example
-            ? `<div class="example"><p class="muted">Example</p><p>${escapeHtml(item.example)}</p></div>`
-            : ""
-        }
-      `;
-    } else {
-      card.innerHTML = `
-        <div class="entry-top">
-          <div>
-            <h3>${escapeHtml(item.french)}</h3>
-            <div class="translation">
-              <p class="muted">Meaning</p>
-              <p>${escapeHtml(item.meaning)}</p>
-            </div>
-            <div class="meta">
-              ${typeHtml}
-              ${categoryHtml}
-              ${authorHtml}
-            </div>
-          </div>
-          <button class="delete-btn" data-id="${item.id}">Delete</button>
+
+        <div class="entry-actions">
+          <button class="listen-btn" data-speak="${escapeHtml(item.french)}">🔊 Listen</button>
+          ${ownerActions}
         </div>
-      `;
-    }
+      </div>
+    `;
 
     entries.appendChild(card);
   });
 
-  const deleteButtons = document.querySelectorAll(".delete-btn");
-  deleteButtons.forEach((button) => {
-    button.addEventListener("click", async function () {
-      const id = this.dataset.id;
-      await deleteEntry(id);
+  document.querySelectorAll("[data-speak]").forEach((button) => {
+    button.addEventListener("click", () => {
+      speakFrench(button.dataset.speak);
+    });
+  });
+
+  document.querySelectorAll("[data-edit-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      startEditing(button.dataset.editId);
+    });
+  });
+
+  document.querySelectorAll("[data-delete-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await deleteEntry(button.dataset.deleteId);
     });
   });
 }
 
 /* =========================
-   10) DELETE ENTRY
+   12) EDITING
 ========================= */
+function startEditing(id) {
+  const item = allEntries.find((entry) => entry.id === id);
+  if (!item || !isOwner(item)) return;
+
+  currentTab = item.type === "word" ? "words" : "sentences";
+  wordsTab.classList.toggle("active", currentTab === "words");
+  sentencesTab.classList.toggle("active", currentTab === "sentences");
+
+  formTitle.textContent = item.type === "word" ? "Edit word" : "Edit sentence";
+  exampleField.classList.toggle("hidden", item.type !== "word");
+  frenchInput.placeholder = item.type === "word" ? "French word" : "French sentence";
+
+  editingId.value = item.id;
+  authorInput.value = item.author || defaultAuthorName();
+  frenchInput.value = item.french || "";
+  meaningInput.value = item.meaning || "";
+  categoryInput.value = item.category || "";
+  exampleInput.value = item.example || "";
+
+  saveBtn.textContent = "Update";
+  cancelEditBtn.classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function clearEditingState() {
+  editingId.value = "";
+  entryForm.reset();
+  formTitle.textContent = currentTab === "words" ? "Add a word" : "Add a sentence";
+  saveBtn.textContent = "Save";
+  cancelEditBtn.classList.add("hidden");
+  if (currentUser) authorInput.value = defaultAuthorName();
+}
+
 async function deleteEntry(id) {
+  const item = allEntries.find((entry) => entry.id === id);
+  if (!item || !isOwner(item)) return;
+
   try {
     await deleteDoc(doc(db, "rooms", currentRoom, "entries", id));
+    if (editingId.value === id) clearEditingState();
   } catch (error) {
     console.error(error);
     alert("Could not delete this item.");
@@ -289,147 +457,184 @@ async function deleteEntry(id) {
 }
 
 /* =========================
-   11) STUDY MODE
+   13) SAVE / UPDATE ENTRY
 ========================= */
-function renderStudyCard() {
-  const filtered = getFilteredItems();
+entryForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
 
-  if (!filtered.length) {
-    studyFrench.textContent = "Nothing to review yet";
-    studyMeaning.textContent = "";
-    studyExtra.innerHTML = "";
-    studyAnswer.style.display = "none";
+  if (!currentUser) {
+    alert("Please sign in first.");
     return;
   }
 
-  if (studyIndex >= filtered.length) {
-    studyIndex = 0;
+  const type = currentTab === "words" ? "word" : "sentence";
+
+  const payload = {
+    type,
+    french: frenchInput.value.trim(),
+    meaning: meaningInput.value.trim(),
+    category: categoryInput.value.trim(),
+    example: type === "word" ? exampleInput.value.trim() : "",
+    author: authorInput.value.trim() || defaultAuthorName() || "anonymous",
+    userId: currentUser.uid,
+    userEmail: currentUser.email || "",
+    updatedAt: serverTimestamp()
+  };
+
+  if (!payload.french || !payload.meaning) return;
+
+  try {
+    if (editingId.value) {
+      const existing = allEntries.find((entry) => entry.id === editingId.value);
+      if (!existing || !isOwner(existing)) {
+        alert("You can only edit your own entries.");
+        return;
+      }
+
+      await updateDoc(doc(db, "rooms", currentRoom, "entries", editingId.value), payload);
+    } else {
+      await addDoc(getEntriesCollection(), {
+        ...payload,
+        createdAt: serverTimestamp()
+      });
+    }
+
+    clearEditingState();
+  } catch (error) {
+    console.error(error);
+    alert("Could not save this entry.");
+  }
+});
+
+/* =========================
+   14) STUDY MODE
+========================= */
+function rebuildStudyQueue() {
+  const filtered = getFilteredItems();
+  const progress = getStudyProgress();
+
+  let queue = filtered;
+
+  if (hardOnlyToggle.checked) {
+    queue = queue.filter((item) => progress[item.id] === "hard");
   }
 
-  const item = filtered[studyIndex];
+  if (shuffleToggle.checked) {
+    queue = [...queue];
+    for (let i = queue.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [queue[i], queue[j]] = [queue[j], queue[i]];
+    }
+  }
+
+  studyQueue = queue;
+  if (studyIndex >= studyQueue.length) studyIndex = 0;
+
+  renderStudyStats();
+}
+
+function renderStudyStats() {
+  const progress = getStudyProgress();
+  const currentTabType = currentTab === "words" ? "word" : "sentence";
+  const relevant = allEntries.filter((item) => item.type === currentTabType);
+
+  knownCount.textContent = relevant.filter((item) => progress[item.id] === "known").length;
+  hardCount.textContent = relevant.filter((item) => progress[item.id] === "hard").length;
+  queueCount.textContent = studyQueue.length;
+}
+
+function renderStudyCard() {
+  if (!studyQueue.length) {
+    studyFrench.textContent = hardOnlyToggle.checked
+      ? "No hard items yet"
+      : "No items yet";
+    studyMeaning.textContent = "";
+    studyExtra.innerHTML = "";
+    studyAnswer.classList.add("hidden");
+    return;
+  }
+
+  const item = studyQueue[studyIndex];
+  const status = getEntryStatus(item.id);
+
   studyFrench.textContent = item.french || "";
   studyMeaning.textContent = item.meaning || "";
-  studyExtra.innerHTML = "";
+  studyExtra.innerHTML = `
+    ${item.category ? `<div class="entry-extra"><p class="muted small">Category</p><p>${escapeHtml(item.category)}</p></div>` : ""}
+    ${item.example ? `<div class="entry-extra"><p class="muted small">Example</p><p>${escapeHtml(item.example)}</p></div>` : ""}
+    ${item.author ? `<div class="entry-extra"><p class="muted small">Added by</p><p>${escapeHtml(item.author)}</p></div>` : ""}
+    ${status ? `<div class="entry-extra"><p class="muted small">Your status</p><p>${status === "known" ? "Known" : "Hard"}</p></div>` : ""}
+  `;
+}
 
-  let extra = "";
-
-  if (item.example) {
-    extra += `
-      <div style="margin-top:10px;">
-        <p class="muted">Example</p>
-        <p>${escapeHtml(item.example)}</p>
-      </div>
-    `;
-  }
-
-  if (item.category) {
-    extra += `
-      <div style="margin-top:10px;">
-        <p class="muted">Category</p>
-        <p>${escapeHtml(item.category)}</p>
-      </div>
-    `;
-  }
-
-  if (item.author) {
-    extra += `
-      <div style="margin-top:10px;">
-        <p class="muted">Added by</p>
-        <p>${escapeHtml(item.author)}</p>
-      </div>
-    `;
-  }
-
-  studyExtra.innerHTML = extra;
+function moveStudy(step) {
+  if (!studyQueue.length) return;
+  studyIndex = (studyIndex + step + studyQueue.length) % studyQueue.length;
+  studyAnswer.classList.add("hidden");
+  renderStudyCard();
 }
 
 /* =========================
-   12) ADD WORD
+   15) EVENTS
 ========================= */
-wordForm.addEventListener("submit", async function (e) {
-  e.preventDefault();
+signInBtn.addEventListener("click", handleSignIn);
+signOutBtn.addEventListener("click", handleSignOut);
 
-  const newWord = {
-    type: "word",
-    french: wordFrench.value.trim(),
-    meaning: wordMeaning.value.trim(),
-    category: wordCategory.value.trim(),
-    example: wordExample.value.trim(),
-    author: authorInput.value.trim(),
-    createdAt: serverTimestamp()
-  };
-
-  if (!newWord.french || !newWord.meaning) return;
-
-  try {
-    await addDoc(getEntriesCollection(), newWord);
-    wordForm.reset();
-    authorInput.value = localStorage.getItem("french_author_name") || "";
-  } catch (error) {
-    console.error(error);
-    alert("Could not save word. Check Firebase setup.");
-  }
+wordsTab.addEventListener("click", () => {
+  currentTab = "words";
+  setTab("words");
 });
 
-/* =========================
-   13) ADD SENTENCE
-========================= */
-sentenceForm.addEventListener("submit", async function (e) {
-  e.preventDefault();
-
-  const newSentence = {
-    type: "sentence",
-    french: sentenceFrench.value.trim(),
-    meaning: sentenceMeaning.value.trim(),
-    category: sentenceCategory.value.trim(),
-    author: authorInput.value.trim(),
-    createdAt: serverTimestamp()
-  };
-
-  if (!newSentence.french || !newSentence.meaning) return;
-
-  try {
-    await addDoc(getEntriesCollection(), newSentence);
-    sentenceForm.reset();
-    authorInput.value = localStorage.getItem("french_author_name") || "";
-  } catch (error) {
-    console.error(error);
-    alert("Could not save sentence. Check Firebase setup.");
-  }
+sentencesTab.addEventListener("click", () => {
+  currentTab = "sentences";
+  setTab("sentences");
 });
 
-/* =========================
-   14) UI EVENTS
-========================= */
-searchInput.addEventListener("input", function () {
+cancelEditBtn.addEventListener("click", clearEditingState);
+
+searchInput.addEventListener("input", () => {
   studyIndex = 0;
-  studyAnswer.style.display = "none";
+  studyAnswer.classList.add("hidden");
+  rebuildStudyQueue();
   renderEntries();
   renderStudyCard();
 });
 
-showAnswerBtn.addEventListener("click", function () {
-  studyAnswer.style.display = "block";
-});
-
-nextBtn.addEventListener("click", function () {
-  const filtered = getFilteredItems();
-  if (!filtered.length) return;
-
-  studyIndex = (studyIndex + 1) % filtered.length;
-  studyAnswer.style.display = "none";
+shuffleToggle.addEventListener("change", () => {
+  studyIndex = 0;
+  rebuildStudyQueue();
   renderStudyCard();
 });
 
-wordsTab.addEventListener("click", function () {
-  setTab("words");
+hardOnlyToggle.addEventListener("change", () => {
+  studyIndex = 0;
+  rebuildStudyQueue();
+  renderStudyCard();
 });
 
-sentencesTab.addEventListener("click", function () {
-  setTab("sentences");
+showAnswerBtn.addEventListener("click", () => {
+  studyAnswer.classList.remove("hidden");
 });
 
-copyRoomBtn.addEventListener("click", async function () {
+prevBtn.addEventListener("click", () => moveStudy(-1));
+nextBtn.addEventListener("click", () => moveStudy(1));
+
+markKnownBtn.addEventListener("click", () => {
+  if (!studyQueue.length) return;
+  setEntryStatus(studyQueue[studyIndex].id, "known");
+});
+
+markHardBtn.addEventListener("click", () => {
+  if (!studyQueue.length) return;
+  setEntryStatus(studyQueue[studyIndex].id, "hard");
+});
+
+studySpeakBtn.addEventListener("click", () => {
+  if (!studyQueue.length) return;
+  speakFrench(studyQueue[studyIndex].french || "");
+});
+
+copyRoomBtn.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(window.location.href);
     copyRoomBtn.textContent = "Link copied";
@@ -442,9 +647,10 @@ copyRoomBtn.addEventListener("click", async function () {
 });
 
 /* =========================
-   15) START
+   16) START
 ========================= */
+setTab("words");
 startRealtimeListener();
 renderEntries();
+rebuildStudyQueue();
 renderStudyCard();
-
