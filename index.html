@@ -7,123 +7,185 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="page">
-    <section class="hero">
-      <span class="eyebrow">Shared French notebook</span>
-      <h1>Save French words and sentences with live sync</h1>
-      <p>
-        Everything added here is stored online and shared with anyone using the same room link.
-      </p>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="brand-badge">FR</div>
+        <div>
+          <p class="eyebrow">Shared French notebook</p>
+          <h1>Learn together, live</h1>
+        </div>
+      </div>
+
+      <div class="auth-panel">
+        <div id="userInfo" class="user-info hidden">
+          <img id="userAvatar" class="user-avatar" alt="User avatar" />
+          <div>
+            <strong id="userName">Signed in</strong>
+            <p id="userEmail" class="muted small"></p>
+          </div>
+        </div>
+
+        <button id="signInBtn" class="primary-btn small-btn">Sign in with Google</button>
+        <button id="signOutBtn" class="secondary-btn small-btn hidden">Sign out</button>
+      </div>
+    </header>
+
+    <section class="hero-card">
+      <div>
+        <span class="pill">Realtime collaborative study</span>
+        <h2>Save French words and sentences with shared sync, audio, editing, and smart review.</h2>
+        <p class="muted">
+          Everyone in the same room sees the same content. Your own study progress is kept locally for you.
+        </p>
+      </div>
+
+      <div class="hero-side">
+        <div class="mini-stat">
+          <span>Room</span>
+          <strong id="roomName">default-room</strong>
+        </div>
+        <button id="copyRoomBtn" class="secondary-btn small-btn">Copy room link</button>
+      </div>
     </section>
 
-    <div class="room-bar">
-      <div>
-        <p class="room-label">Current room</p>
-        <strong id="roomName">default-room</strong>
-      </div>
-      <button id="copyRoomBtn" class="secondary-btn small-btn">Copy room link</button>
-    </div>
-
     <div class="layout">
-      <aside>
-        <div class="panel">
+      <aside class="sidebar">
+        <section class="card">
           <div class="tabs">
             <button class="tab-btn active" id="wordsTab">Words</button>
             <button class="tab-btn" id="sentencesTab">Sentences</button>
           </div>
 
-          <div class="field">
-            <input type="text" id="authorInput" placeholder="Your name (optional)" />
+          <div id="authNotice" class="notice">
+            Sign in to add, edit, or delete your own items.
           </div>
 
-          <form id="wordForm">
-            <h2>Add a word</h2>
-            <div class="field">
-              <input type="text" id="wordFrench" placeholder="French word" required />
+          <form id="entryForm">
+            <div class="form-header">
+              <h3 id="formTitle">Add a word</h3>
+              <button type="button" id="cancelEditBtn" class="ghost-btn hidden">Cancel edit</button>
             </div>
-            <div class="field">
-              <input type="text" id="wordMeaning" placeholder="Meaning / translation" required />
-            </div>
-            <div class="field">
-              <input type="text" id="wordCategory" placeholder="Category (travel, verbs, basics...)" />
-            </div>
-            <div class="field">
-              <textarea id="wordExample" placeholder="Example sentence"></textarea>
-            </div>
-            <button class="primary-btn" type="submit">Save word</button>
-          </form>
 
-          <form id="sentenceForm" style="display:none;">
-            <h2>Add a sentence</h2>
-            <div class="field">
-              <textarea id="sentenceFrench" placeholder="French sentence" required></textarea>
-            </div>
-            <div class="field">
-              <textarea id="sentenceMeaning" placeholder="Meaning / translation" required></textarea>
-            </div>
-            <div class="field">
-              <input type="text" id="sentenceCategory" placeholder="Category (daily life, work, travel...)" />
-            </div>
-            <button class="primary-btn" type="submit">Save sentence</button>
-          </form>
-        </div>
+            <input type="hidden" id="editingId" />
 
-        <div class="panel">
-          <h2>Study mode</h2>
-          <p class="muted">Review what is saved in the current room.</p>
+            <div class="field">
+              <input type="text" id="authorInput" placeholder="Display name (optional override)" />
+            </div>
+
+            <div class="field">
+              <input type="text" id="frenchInput" placeholder="French word" required />
+            </div>
+
+            <div class="field">
+              <textarea id="meaningInput" placeholder="Meaning / translation" required></textarea>
+            </div>
+
+            <div class="field">
+              <input type="text" id="categoryInput" placeholder="Category (travel, verbs, basics...)" />
+            </div>
+
+            <div class="field" id="exampleField">
+              <textarea id="exampleInput" placeholder="Example sentence (optional)"></textarea>
+            </div>
+
+            <button id="saveBtn" class="primary-btn" type="submit">Save</button>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="study-top">
+            <div>
+              <h3>Study mode</h3>
+              <p class="muted">Smart review for the current tab.</p>
+            </div>
+            <button id="studySpeakBtn" class="listen-btn" type="button">🔊 Listen</button>
+          </div>
+
+          <div class="study-filters">
+            <label class="toggle-pill">
+              <input type="checkbox" id="shuffleToggle" />
+              <span>Shuffle</span>
+            </label>
+
+            <label class="toggle-pill">
+              <input type="checkbox" id="hardOnlyToggle" />
+              <span>Hard only</span>
+            </label>
+          </div>
+
+          <div class="study-stats">
+            <div class="mini-stat">
+              <span>Known</span>
+              <strong id="knownCount">0</strong>
+            </div>
+            <div class="mini-stat">
+              <span>Hard</span>
+              <strong id="hardCount">0</strong>
+            </div>
+            <div class="mini-stat">
+              <span>Queue</span>
+              <strong id="queueCount">0</strong>
+            </div>
+          </div>
 
           <div class="study-box">
-            <div class="study-card">
-              <p class="muted">French</p>
-              <h3 id="studyFrench">Loading...</h3>
+            <p class="muted small">French</p>
+            <h3 id="studyFrench">No items yet</h3>
 
-              <div class="study-answer" id="studyAnswer" style="display:none;">
-                <p class="muted">Meaning</p>
-                <p id="studyMeaning"></p>
-                <div id="studyExtra"></div>
-              </div>
-            </div>
-
-            <div class="study-actions">
-              <button class="primary-btn" type="button" id="showAnswerBtn">Show answer</button>
-              <button class="secondary-btn" type="button" id="nextBtn">Next</button>
+            <div id="studyAnswer" class="study-answer hidden">
+              <p class="muted small">Meaning</p>
+              <p id="studyMeaning"></p>
+              <div id="studyExtra"></div>
             </div>
           </div>
-        </div>
+
+          <div class="study-actions">
+            <button id="showAnswerBtn" class="primary-btn" type="button">Show answer</button>
+            <button id="prevBtn" class="secondary-btn" type="button">Previous</button>
+            <button id="nextBtn" class="secondary-btn" type="button">Next</button>
+          </div>
+
+          <div class="study-actions bottom">
+            <button id="markKnownBtn" class="success-btn" type="button">✓ I know this</button>
+            <button id="markHardBtn" class="warning-btn" type="button">★ Mark hard</button>
+          </div>
+        </section>
       </aside>
 
-      <main class="content-card">
-        <div class="top-row">
-          <div>
-            <h2>Your shared French library</h2>
-            <p class="muted">Everyone in this room sees the same content.</p>
+      <main class="main-content">
+        <section class="card">
+          <div class="library-top">
+            <div>
+              <h3>Your shared French library</h3>
+              <p class="muted">Everyone in this room sees the same content.</p>
+            </div>
+            <input
+              class="search"
+              type="text"
+              id="searchInput"
+              placeholder="Search French, meaning, category, author..."
+            />
           </div>
 
-          <input
-            class="search"
-            type="text"
-            id="searchInput"
-            placeholder="Search French, meaning, category, author..."
-          />
-        </div>
+          <div class="stats">
+            <div class="stat-card">
+              <span>Words</span>
+              <strong id="wordCount">0</strong>
+            </div>
+            <div class="stat-card">
+              <span>Sentences</span>
+              <strong id="sentenceCount">0</strong>
+            </div>
+            <div class="stat-card">
+              <span>Visible</span>
+              <strong id="visibleCount">0</strong>
+            </div>
+          </div>
 
-        <div class="stats">
-          <div class="stat-card">
-            <span>Words</span>
-            <strong id="wordCount">0</strong>
-          </div>
-          <div class="stat-card">
-            <span>Sentences</span>
-            <strong id="sentenceCount">0</strong>
-          </div>
-          <div class="stat-card">
-            <span>Visible items</span>
-            <strong id="visibleCount">0</strong>
-          </div>
-        </div>
-
-        <div class="status-line" id="statusLine">Connecting...</div>
-        <div class="entries" id="entries"></div>
+          <div id="statusLine" class="status-line">Connecting...</div>
+          <div id="entries" class="entries"></div>
+        </section>
       </main>
     </div>
   </div>
